@@ -75,7 +75,9 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
   CameraController _createController(CameraDescription description) {
     return CameraController(
       description,
-      ResolutionPreset.ultraHigh,
+      type == CameraModeApp.barcode
+          ? ResolutionPreset.high
+          : ResolutionPreset.ultraHigh,
       enableAudio: false,
       imageFormatGroup: Platform.isAndroid
           ? ImageFormatGroup.nv21
