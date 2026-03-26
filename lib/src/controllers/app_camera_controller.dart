@@ -7,12 +7,12 @@ import 'dart:io';
 
 enum CameraModeApp { barcode, photo }
 
-abstract class CameraApp {
+abstract class CameraApp extends ChangeNotifier {
   Future<void> init();
   Future<void> pause();
   Future<void> resume();
   Future<void> switchCamera();
-  Future<void> dispose();
+  // Future<void> dispose();
 }
 
 class BarcodeResultApp {
@@ -36,6 +36,7 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     );
 
     cameraController = _createController(_currentDescription);
+    init();
   }
 
   final CameraModeApp type;
@@ -88,7 +89,7 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     if (_isDisposed || _isInitialized) return;
 
     WidgetsBinding.instance.addObserver(this);
-    await Future.delayed(const Duration(milliseconds: 350));
+    await Future.delayed(const Duration(seconds: 1));
     await cameraController.initialize();
     await cameraController.setFocusMode(FocusMode.auto);
     await cameraController.setExposureMode(ExposureMode.auto);
@@ -98,6 +99,7 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     if (type == CameraModeApp.barcode) {
       await _startImageStreamSafely();
     }
+    notifyListeners();
   }
 
   @override
@@ -340,7 +342,7 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
   }
 
   @override
-  Future<void> dispose() async {
+  void dispose() async {
     if (_isDisposed) return;
     _isDisposed = true;
 
@@ -350,5 +352,6 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     await _barcodeScanner.close();
     await _barcodeStreamController.close();
     await cameraController.dispose();
+    super.dispose();
   }
 }
