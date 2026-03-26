@@ -7,12 +7,12 @@ import 'dart:io';
 
 enum CameraModeApp { barcode, photo }
 
-abstract class CameraApp extends ChangeNotifier {
+abstract class CameraApp {
   Future<void> init();
   Future<void> pause();
   Future<void> resume();
   Future<void> switchCamera();
-  // Future<void> dispose();
+  Future<void> dispose();
 }
 
 class BarcodeResultApp {
@@ -36,7 +36,6 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     );
 
     cameraController = _createController(_currentDescription);
-    init();
   }
 
   final CameraModeApp type;
@@ -99,7 +98,6 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     if (type == CameraModeApp.barcode) {
       await _startImageStreamSafely();
     }
-    notifyListeners();
   }
 
   @override
@@ -342,7 +340,7 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
   }
 
   @override
-  void dispose() async {
+  Future<void> dispose() async {
     if (_isDisposed) return;
     _isDisposed = true;
 
@@ -352,6 +350,5 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     await _barcodeScanner.close();
     await _barcodeStreamController.close();
     await cameraController.dispose();
-    super.dispose();
   }
 }
