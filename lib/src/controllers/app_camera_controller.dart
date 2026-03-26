@@ -114,6 +114,7 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     await cameraController.initialize();
+    await cameraController.lockCaptureOrientation(DeviceOrientation.portraitUp);
     await cameraController.setFocusMode(FocusMode.auto);
     await cameraController.setExposureMode(ExposureMode.auto);
     _isInitialized = true;
