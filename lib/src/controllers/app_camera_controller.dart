@@ -290,11 +290,9 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
       _lastDetectedAt = now;
 
       final rect = firstBarcode.boundingBox;
-      if (rect.isEmpty) {
-        final focusX = (rect.center.dx / image.width).clamp(0.0, 1.0);
-        final focusY = (rect.center.dy / image.height).clamp(0.0, 1.0);
-        focusAt(Offset(focusX, focusY));
-      }
+      final focusX = (rect.center.dx / image.width).clamp(0.0, 1.0);
+      final focusY = (rect.center.dy / image.height).clamp(0.0, 1.0);
+      focusAt(Offset(focusX, focusY));
 
       if (!_barcodeStreamController.isClosed) {
         _barcodeStreamController.add(
