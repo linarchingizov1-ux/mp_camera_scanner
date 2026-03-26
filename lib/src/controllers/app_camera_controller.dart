@@ -78,26 +78,27 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
   static const Duration _minAnalyzeInterval = Duration(milliseconds: 80);
   static const Duration _sameCodeCooldown = Duration(milliseconds: 1200);
 
-  InputImageRotation? _getInputImageRotation() {
-    final sensorOrientation = _currentDescription.sensorOrientation;
-    if (Platform.isIOS) {
-      return InputImageRotationValue.fromRawValue(sensorOrientation);
-    }
+  // InputImageRotation? _getInputImageRotation() {
+  //   final sensorOrientation = _currentDescription.sensorOrientation;
+  //   if (Platform.isIOS) {
+  //     return InputImageRotationValue.fromRawValue(sensorOrientation);
+  //   }
 
-    final deviceOrientation = cameraController.value.deviceOrientation;
-    int? rotationCompensation = _orientations[deviceOrientation];
-    if (rotationCompensation == null) return null;
-    if (_currentDescription.lensDirection == CameraLensDirection.front) {
-      rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
-    } else {
-      rotationCompensation =
-          (sensorOrientation - rotationCompensation + 360) % 360;
-    }
-    return InputImageRotationValue.fromRawValue(rotationCompensation);
-  }
+  //   final deviceOrientation = cameraController.value.deviceOrientation;
+  //   int? rotationCompensation = _orientations[deviceOrientation];
+  //   if (rotationCompensation == null) return null;
+  //   if (_currentDescription.lensDirection == CameraLensDirection.front) {
+  //     rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
+  //   } else {
+  //     rotationCompensation =
+  //         (sensorOrientation - rotationCompensation + 360) % 360;
+  //   }
+  //   return InputImageRotationValue.fromRawValue(rotationCompensation);
+  // }
 
   CameraController _createController(CameraDescription description) {
     return CameraController(
+      fps: 30,
       description,
       ResolutionPreset.high,
       enableAudio: false,
@@ -228,36 +229,65 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     _lastAnalyzedAt = DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-  InputImage? _inputImageFromCameraImage(CameraImage image) {
+  InputImage? cameraImageToInputImage(
+    CameraImage image,
+    CameraDescription camera,
+    DeviceOrientation deviceOrientation,
+  ) {
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
-    if (format == null) return null;
-    final rotation = _getInputImageRotation();
-    if (rotation == null) return null;
-
-    if (Platform.isAndroid) {
-      if (image.planes.isEmpty) return null;
-      return InputImage.fromBytes(
-        bytes: image.planes.first.bytes,
-        metadata: InputImageMetadata(
-          size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: rotation,
-          format: format,
-          bytesPerRow: image.planes.first.bytesPerRow,
-        ),
-      );
-    } else if (Platform.isIOS) {
-      if (image.planes.length != 1) return null;
-      return InputImage.fromBytes(
-        bytes: image.planes.first.bytes,
-        metadata: InputImageMetadata(
-          size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: rotation,
-          format: format,
-          bytesPerRow: image.planes.first.bytesPerRow,
-        ),
-      );
+    if (format == null) {
+      return null;
     }
-    return null;
+    final plane = image.planes.firstOrNull;
+    if (plane == null) {
+      return null;
+    }
+
+    final sensorOrientation = camera.sensorOrientation;
+
+    final InputImageRotation? rotation;
+    if (Platform.isIOS) {
+      rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
+    } else if (Platform.isAndroid) {
+      var rotationCompensation = _orientations[deviceOrientation];
+      if (rotationCompensation == null) {
+        return null;
+      }
+      if (camera.lensDirection == CameraLensDirection.front) {
+        rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
+      } else {
+        rotationCompensation =
+            (sensorOrientation - rotationCompensation + 360) % 360;
+      }
+      rotation = InputImageRotationValue.fromRawValue(rotationCompensation);
+    } else {
+      rotation = null;
+    }
+
+    if (rotation == null) {
+      return null;
+    }
+
+    final Uint8List bytes;
+    if (Platform.isAndroid) {
+      bytes = image.getNv21Uint8List();
+    } else {
+      final allBytes = WriteBuffer();
+      for (final plane in image.planes) {
+        allBytes.putUint8List(plane.bytes);
+      }
+      bytes = allBytes.done().buffer.asUint8List();
+    }
+
+    return InputImage.fromBytes(
+      bytes: bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: Platform.isAndroid ? InputImageFormat.nv21 : format,
+        bytesPerRow: plane.bytesPerRow,
+      ),
+    );
   }
 
   Future<void> _processImage(CameraImage image) async {
@@ -269,8 +299,14 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     if (now.difference(_lastAnalyzedAt) < _minAnalyzeInterval) return;
     _lastAnalyzedAt = now;
 
-    final inputImage = _inputImageFromCameraImage(image);
-    if (inputImage == null) return;
+    final inputImage = cameraImageToInputImage(
+      image,
+      _currentDescription,
+      cameraController.value.deviceOrientation,
+    );
+    if (inputImage == null) {
+      return;
+    }
 
     _isProcessingFrame = true;
     try {
@@ -349,5 +385,49 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     await _barcodeScanner.close();
     await _barcodeStreamController.close();
     await cameraController.dispose();
+  }
+}
+
+extension Nv21Converter on CameraImage {
+  Uint8List getNv21Uint8List() {
+    var width = this.width;
+    var height = this.height;
+
+    var yPlane = planes[0];
+    var uPlane = planes[1];
+    var vPlane = planes[2];
+
+    var yBuffer = yPlane.bytes;
+    var uBuffer = uPlane.bytes;
+    var vBuffer = vPlane.bytes;
+
+    var numPixels = (width * height * 1.5).toInt();
+    var nv21 = List<int>.filled(numPixels, 0);
+
+    int idY = 0;
+    int idUV = width * height;
+    var uvWidth = width ~/ 2;
+    var uvHeight = height ~/ 2;
+    var uvRowStride = uPlane.bytesPerRow;
+    var uvPixelStride = uPlane.bytesPerPixel ?? 0;
+    var yRowStride = yPlane.bytesPerRow;
+    var yPixelStride = yPlane.bytesPerPixel ?? 0;
+
+    for (int y = 0; y < height; ++y) {
+      var uvOffset = y * uvRowStride;
+      var yOffset = y * yRowStride;
+
+      for (int x = 0; x < width; ++x) {
+        nv21[idY++] = yBuffer[yOffset + x * yPixelStride];
+
+        if (y < uvHeight && x < uvWidth) {
+          var bufferIndex = uvOffset + (x * uvPixelStride);
+          nv21[idUV++] = vBuffer[bufferIndex];
+
+          nv21[idUV++] = uBuffer[bufferIndex];
+        }
+      }
+    }
+    return Uint8List.fromList(nv21);
   }
 }
