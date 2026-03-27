@@ -11,7 +11,6 @@ abstract class CameraApp {
   Future<void> init();
   Future<void> pause();
   Future<void> resume();
-  Future<void> switchCamera();
   Future<void> dispose();
 }
 
@@ -50,7 +49,6 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
 
   bool _isDisposed = false;
   bool _isInitialized = false;
-  bool _isSwitchingCamera = false;
   bool _isProcessingFrame = false;
   bool _isStreamingStarted = false;
   bool _isPausedManually = false;
@@ -147,34 +145,6 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     _isPausedManually = false;
   }
 
-  @override
-  Future<void> switchCamera() async {
-    if (_isDisposed || !cameraInit || _isSwitchingCamera) return;
-    if (cameras.length < 2) return;
-    _isSwitchingCamera = true;
-    try {
-      final oldLens = _currentDescription.lensDirection;
-      final nextDescription = cameras.firstWhere(
-        (c) => c.lensDirection != oldLens,
-        orElse: () => _currentDescription,
-      );
-      await _stopImageStreamSafely();
-      await cameraController.dispose();
-      _currentDescription = nextDescription;
-      cameraController = _createController(_currentDescription);
-      await cameraController.initialize();
-      await cameraController.setFocusMode(FocusMode.auto);
-      await cameraController.setExposureMode(ExposureMode.auto);
-
-      _resetDetectionState();
-      if (type == CameraModeApp.barcode) {
-        await _startImageStreamSafely();
-      }
-    } finally {
-      _isSwitchingCamera = false;
-    }
-  }
-
   Future<void> focusAt(Offset normalizedPoint) async {
     if (_isDisposed || !cameraInit) return;
     final dx = normalizedPoint.dx.clamp(0.0, 1.0);
@@ -186,7 +156,7 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     } catch (e, st) {
       FlutterError.reportError(
         FlutterErrorDetails(
-          exception: 'Error focusing camera at point: $e',
+          exception: 'Ошибка при получении координат [focusAt]: $e',
           stack: st,
         ),
       );
@@ -212,7 +182,7 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     } catch (e, st) {
       FlutterError.reportError(
         FlutterErrorDetails(
-          exception: 'Error stopping camera image stream: $e',
+          exception: 'Ошибка во время [_stopImageStreamSafely] : $e',
           stack: st,
         ),
       );
@@ -220,14 +190,6 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
       _isStreamingStarted = false;
       _isProcessingFrame = false;
     }
-  }
-
-  void _resetDetectionState() {
-    _frameCount = 0;
-    _isProcessingFrame = false;
-    _lastDetectedRawValue = null;
-    _lastDetectedAt = DateTime.fromMillisecondsSinceEpoch(0);
-    _lastAnalyzedAt = DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   InputImage? _inputImageFromCameraImage(CameraImage image) {
@@ -308,7 +270,7 @@ class CameraControllerApp extends CameraApp with WidgetsBindingObserver {
     } catch (e, st) {
       FlutterError.reportError(
         FlutterErrorDetails(
-          exception: 'Error in camera image processing: $e',
+          exception: 'Ошибка камеры в [_processImage]: $e',
           stack: st,
         ),
       );
